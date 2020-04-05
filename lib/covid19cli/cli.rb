@@ -1,123 +1,151 @@
 module Covid19cli
-  require 'covid19cli/version'
-
   class << self
+    OPT_DATE = 'date'
+    OPT_SORT = 'sort'
+    OPT_TOP = 'top'
+    OPT_COUNTRY = 'country'
+    OPT_USA = 'states'
+    OPT_USA_COUNTIES = 'counties'
+    OPT_FILTER = 'filter'
+    OPT_HISTORY = 'history'
+    OPT_KEY = 'key'
 
     def cli
+      require 'covid19cli/version'
+      require 'covid19cli/csse'
+
       require 'optparse'
+
+      puts "\n#{COMMAND} #{VERSION}"
+
+      ARGV << '-h' if ARGV.empty?
+
+      options = {}
+      ARGV.options do |opts|
+        opts.banner = "Usage: #{COMMAND} \n"\
+                      "       #{COMMAND} [options]"
+
+        opts.on("-d", "--#{OPT_DATE} [date]", String)  { |val| options[OPT_DATE] = val }
+        opts.on("-s", "--#{OPT_SORT} #{Csse::CONFIRMED}, #{Csse::DEATHS}, #{Csse::DEATH_RATE}", String)  { |val| options[OPT_SORT] = val }
+        opts.on("-t", "--#{OPT_TOP} [number]", String)  { |val| options[OPT_TOP] = val }
+        opts.on("-c", "--#{OPT_COUNTRY} [country]", String)  { |val| options[OPT_COUNTRY] = val }
+        opts.on("--#{OPT_USA}", TrueClass)  { |val| options[OPT_USA] = val }
+        opts.on("--#{OPT_USA_COUNTIES}", TrueClass)  { |val| options[OPT_USA_COUNTIES] = val }
+        opts.on("-f", "--#{OPT_FILTER} [value]", String)  { |val| options[OPT_FILTER] = val }
+        opts.on("--#{OPT_HISTORY}", TrueClass)  { |val| options[OPT_HISTORY] = val }
+        opts.on("--#{OPT_KEY} [key]", String)  { |val| options[OPT_KEY] = val }
+
+        opts.on_tail("-h", "--help") { puts opts }
+
+        opts.parse!
+      end
+
       require 'date'
 
-      puts "#{COMMAND} #{VERSION}"
+      states = options[OPT_USA]
+      counties = options[OPT_USA_COUNTIES]
+      if states || counties
+        require 'covid19cli/nyt'
 
-      # date = "03-25-2021"
-      date = DateTime.now.strftime('%m-%d-%Y')
-      list = get_data(date)
-      summary(list)
+        filter = options[OPT_FILTER]
 
-      # ARGV << '-h' if ARGV.empty?
-      #
-      # options = {}
-      # ARGV.options do |opts|
-      #   opts.banner = "usage: #{COMMAND} --summary"\
-      #
-      #   opts.on("-s", "--summary")  { summary }
-      #
-      #
-      #   opts.on_tail("-h", "--help") {
-      #     puts opts
-      #     puts "\n"
-      #     summary
-      #   }
-      #   opts.parse!
-      # end
+        date = options[OPT_DATE]
+        if date.nil?
+          date = DateTime.now.strftime(Nyt::DATE_FORMAT) if date.nil?
+        else
+          date = DateTime.parse(date).strftime(Nyt::DATE_FORMAT)
+        end
 
-    end
+        if states == true
+          type = 'states'
+        else
+          type = 'counties'
+        end
 
-    def summary(list)
-      require 'terminal-table'
+        key = options[OPT_KEY]
+        if options[OPT_HISTORY] == true
+          if filter.nil? or key.nil?
+            puts "historical data, please use -f and --key"
+          else
+            last = options[OPT_TOP]
 
-      rows = []
-      rows << output_summary('Italy', list)
-      rows << output_summary('US', list)
-      rows << output_summary('China', list)
-      rows << output_summary('Spain', list)
+            if last.nil?
+              puts "#{type} historical data for #{key} = #{filter}"
+            else
+              puts "last #{last} days #{type} historical data for #{key} = #{filter}"
+            end
 
-      rows << output_summary('Germany', list)
-      rows << output_summary('Iran', list)
-      rows << output_summary('France', list)
-      rows << output_summary('Switzerland', list)
+            list = Nyt.get_data_history(type, key, filter)
 
-      rows << output_summary('United Kingdom', list)
-      rows << output_summary('Korea, South', list)
-      rows << output_summary('Netherlands', list)
-      rows << output_summary('Belgium', list)
-
-      rows << output_summary('Austria', list)
-      rows << output_summary('Canada', list)
-      rows << output_summary('Norway', list)
-      rows << output_summary('Australia', list)
-
-      rows << output_summary('Taiwan*', list)
-      rows << output_summary('Japan', list)
-
-      table = Terminal::Table.new :headings => ['Country', 'Confirmed', 'Deaths', 'Death Rate'], :rows => rows
-      table.align_column(1, :right)
-      table.align_column(2, :right)
-      table.align_column(3, :right)
-      puts table
-    end
-
-    def get_data(date)
-      file = "#{date}.csv"
-
-      begin
-        open_data(file)
-        puts "reading data from #{date}.csv"
-      rescue => e
-        require 'open-uri'
-
-        puts "getting data for #{date}"
-        url = "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_daily_reports/#{date}.csv"
-
-        begin
-          download = open(url)
-          IO.copy_stream(download, file)
-        rescue => e
-          puts "oops could not get data for #{date}: #{e}"
+            Nyt.print_chart(list, last)
+          end
           exit
         end
 
-      end
+        list = Nyt.get_data(date, type)
 
-      return open_data(file)
-    end
-
-    def open_data(file)
-      require 'csv'
-      list = CSV.open(file, headers: :first_row).map(&:to_h)
-      return list
-    end
-
-    def confirmedForRegion(list, region, type)
-      count = 0
-
-      list.each do |d|
-        if d['Country_Region'] == region
-          count += d[type].to_i
+        if list.count == 0
+          puts "no data available"
+          exit
         end
+
+        sort = options[OPT_SORT]
+        sort = 'Cases' if sort.nil?
+
+        top = options[OPT_TOP]
+        top = 10 if top.nil?
+        top = top.to_i
+
+        begin
+          Nyt.print_summary(list, sort, top, date, filter)
+        rescue
+          begin
+            date = Date.today.prev_day.strftime(Nyt::DATE_FORMAT)
+            Nyt.print_summary(list, sort, top, date, filter)
+          rescue
+            date = Date.today.prev_day.prev_day.strftime(Nyt::DATE_FORMAT)
+            Nyt.print_summary(list, sort, top, date, filter)
+          end
+        end
+        exit
       end
-      return count
-    end
 
-    def output_summary(region, list)
-      conf = confirmedForRegion(list, region, 'Confirmed')
-      deat = confirmedForRegion(list, region, 'Deaths')
-      dr = (deat.to_f / conf * 100).round(2)
+      date = options[OPT_DATE]
+      if date.nil?
+        date = DateTime.now.strftime(Csse::DATE_FORMAT) if date.nil?
+      else
+        date = DateTime.parse(date).strftime(Csse::DATE_FORMAT)
+      end
 
-      region.sub! 'Taiwan*', 'Taiwan'
-      region.sub! 'Korea, South', 'South Korea'
+      begin
+        list = Csse.get_data(date)
+      rescue
+        date = Date.today.prev_day.strftime(Csse::DATE_FORMAT)
+        list = Csse.get_data(date)
+      end
 
-      return [region, conf, deat, "#{dr}%"]
+      country = options[OPT_COUNTRY]
+      unless country.nil?
+        Csse.print_summary_country(list, country)
+        exit
+      end
+
+      sort = options[OPT_SORT]
+      sort = Csse::CONFIRMED if sort.nil?
+      # sort.sub! 'dr', Csse::DEATH_RATE
+      # sort.sub! Csse::DEATHS.downcase, Csse::DEATHS
+      # sort.sub! Csse::CONFIRMED.downcase, Csse::CONFIRMED
+
+      unless [Csse::DEATHS, Csse::CONFIRMED, Csse::DEATH_RATE].include? sort
+        puts "invalid sort option, try --#{OPT_SORT} #{Csse::CONFIRMED.downcase}, #{Csse::DEATHS.downcase}, dr"
+        exit
+      end
+
+      top = options[OPT_TOP]
+      top = 20 if top.nil?
+      top = top.to_i
+
+      Csse.print_summary(list, sort, top)
     end
 
   end # class

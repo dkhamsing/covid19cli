@@ -1,0 +1,32 @@
+name: Ruby
+
+on:
+  push:
+    branches: [ '*' ]
+  pull_request:
+    branches: [ '*' ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Ruby 2.6
+      uses: actions/setup-ruby@v1
+      with:
+        ruby-version: 2.6.x
+    - name: Build and run
+      run: |
+        gem install bundler
+        bundle install --jobs 4 --retry 3
+        bundle exec covid19cli
+        bundle exec covid19cli -s Deaths
+        bundle exec covid19cli -d 'march 30' --states
+        bundle exec covid19cli -d 'march 30' --counties -f california
+        bundle exec covid19cli --states
+        bundle exec covid19cli --counties -f california
+        bundle exec covid19cli --counties -d 'apr 1' -s 'Death Rate'
+        bundle exec covid19cli --counties --history --key fips -f 06059
+        bundle exec covid19cli --states --history --key state -f California -t 20
