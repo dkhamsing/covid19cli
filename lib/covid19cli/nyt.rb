@@ -44,31 +44,44 @@ module Nyt
     def format_history(list)
       rows = []
 
-      column_max = 12
+      column_max = 8
       death_max = list.last['deaths'].to_i
+
+      prev_cases = 0
+      prev_deaths = 0
+      new_cases_max = 0
+      new_deaths_max = 0
+      list.each { |s|
+        cases = s['cases'].to_i
+        new_cases = cases - prev_cases
+        prev_cases = cases
+        new_cases_max = new_cases if new_cases > new_cases_max
+
+        deaths = s['deaths'].to_i
+        new_deaths = deaths - prev_deaths
+        prev_deaths = deaths
+        new_deaths_max = new_deaths if new_deaths > new_deaths_max
+      }
 
       prev_deaths = 0
       prev_cases = 0
       list.each { |s|
         deaths = s['deaths'].to_i
-
         new_deaths = deaths - prev_deaths
 
-        if death_max == 0
-          num = 0
-        else
-          num = deaths * column_max / death_max
-        end
-        bar = bar(num)
-
         cases = s['cases'].to_i
-
         new_cases = cases - prev_cases
 
-        date = s['date'].sub('2020-','')
-        death_rate = "#{sprintf('%.2f', deaths.to_f / cases.to_i * 100)}"
+        num = new_cases * column_max / new_cases_max
+        ncbar = bar(num)
 
-        rows << [ date, s['state'], s['county'], cases, new_cases, deaths, new_deaths, death_rate, bar]
+        num = new_deaths * column_max / new_deaths_max
+        ndbar = bar(num)
+
+        date = s['date'].sub('2020-','')
+        death_rate = "#{sprintf('%.2f', deaths.to_f / cases.to_i * 100)}%"
+
+        rows << [ date, s['state'], s['county'], cases, new_cases, ncbar, deaths, new_deaths, ndbar, death_rate]
 
         prev_deaths = deaths
         prev_cases = cases
@@ -86,14 +99,16 @@ module Nyt
         r = r[count-last.to_i,count]
       end
 
-      h = ['Date', 'State', 'County', 'Cases', 'New Cases', 'Deaths', 'New Deaths', 'Death Rate %', 'Death Plot']
+      h = ['Date', 'State', 'County', 'Cases', "New\nCases", "New\nCases", 'Deaths', "New\nDeaths", "New\nDeaths", "Death\nRate"]
 
       table = Terminal::Table.new :headings => h, :rows => r
       table.align_column(3, :right)
       table.align_column(4, :right)
-      table.align_column(5, :right)
+
       table.align_column(6, :right)
       table.align_column(7, :right)
+
+      table.align_column(9, :right)
 
       puts table
 
@@ -152,7 +167,7 @@ module Nyt
         county = selected['county']
         confirmed = selected['cases'].to_i
         deaths = selected['deaths'].to_i
-        death_rate = "#{sprintf('%.2f', deaths.to_f / confirmed * 100)}"
+        death_rate = "#{sprintf('%.2f', deaths.to_f / confirmed * 100)}%"
         rows << {'State' => state, 'County' => county, 'Cases' => confirmed, 'Deaths' => deaths, 'Death Rate' => death_rate}
       }
 
@@ -174,7 +189,7 @@ module Nyt
 
       formatted = format_data(data)
 
-      table = Terminal::Table.new :headings => ['State', 'County', 'Cases', 'Deaths', "Death Rate %"], :rows => formatted
+      table = Terminal::Table.new :headings => ['State', 'County', 'Cases', 'Deaths', "Death\nRate"], :rows => formatted
       table.align_column(2, :right)
       table.align_column(3, :right)
       table.align_column(4, :right)
