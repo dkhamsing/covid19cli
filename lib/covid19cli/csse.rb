@@ -67,7 +67,7 @@ module Csse
 
       formatted = format_data(data)
 
-      table = Terminal::Table.new :headings => [Csse::COUNTRY, Csse::CONFIRMED, Csse::DEATHS, "#{Csse::DEATH_RATE} %"], :rows => formatted
+      table = Terminal::Table.new :headings => [Csse::COUNTRY, Csse::CONFIRMED, Csse::DEATHS, "Death\nRate"], :rows => formatted
       table.align_column(1, :right)
       table.align_column(2, :right)
       table.align_column(3, :right)
@@ -134,7 +134,7 @@ module Csse
     def get_data_summary(country, list)
       confirmed = get_aggregate_count(list, country, CONFIRMED)
       deaths = get_aggregate_count(list, country, DEATHS)
-      death_rate = "#{sprintf('%.2f', deaths.to_f / confirmed * 100)}"
+      death_rate = "#{sprintf('%.2f', deaths.to_f / confirmed * 100)}%"
 
       country.sub! 'Taiwan*', 'Taiwan'
       country.sub! 'Korea, South', 'South Korea'
